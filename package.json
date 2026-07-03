@@ -1,0 +1,14 @@
+{
+  "name": "note-backend",
+  "version": "1.0.0",
+  "description": "Express backend server for login data",
+  "main": "app.js",
+  "scripts": {
+    "start": "node office365-server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "express": "^4.22.2",
+    "node-fetch": "^2.7.0"
+  }
+}
